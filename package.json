@@ -1,0 +1,16 @@
+{
+  "name": "houseparty-music-server",
+  "version": "1.0.0",
+  "description": "Server for houseparty activity in my room for a Spotify playlist song voting system",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "housepart-music-server"
+  },
+  "author": "Ruben Brugman",
+  "license": "ISC"
+}
