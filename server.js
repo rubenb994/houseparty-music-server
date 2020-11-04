@@ -7,10 +7,12 @@ app.get("/", (req, res) => {
 });
 
 io.on("connection", (socket) => {
-  console.log("a user connected", socket.id);
+  console.log(`User ${socket.id} connected`);
 
   socket.on("new-choice", (choice) => {
-    console.log("new choice from", choice);
+    console.log(choice, " form ", socket.id);
+
+    socket.broadcast.emit("new-choice", choice);
   });
 });
 
