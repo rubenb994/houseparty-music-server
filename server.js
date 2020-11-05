@@ -5,6 +5,7 @@ const axios = require("axios").default;
 const dotenv = require("dotenv");
 dotenv.config();
 var SpotifyWebApi = require("spotify-web-api-node");
+const { isRegExp } = require("util");
 const redirectUri = "http://localhost:3000/callback";
 const scopes = [
   "user-read-private",
@@ -49,7 +50,11 @@ app.get("/callback", function (req, res) {
 var votes = [];
 var options = [];
 io.on("connection", (socket) => {
-  console.log(`User ${socket.id} connected`);
+  console.log(`Socket ${socket.id} connected`);
+
+  if(voteBusy) {
+    io.emit("new-vote", options);
+  }
 
   socket.on("send-vote", (trackId) => {
     console.log("New vote ", trackId, " form ", socket.id);
@@ -61,6 +66,12 @@ io.on("connection", (socket) => {
     } else {
       votes.push(newVote);
     }
+    console.log(votes);
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`Socket ${socket.id} disconnected`);
+    removeDisconnectedVote(socket.id);
     console.log(votes);
   });
 });
@@ -101,12 +112,14 @@ function setupPlaybackCheck() {
           voteBusy = true;
           voteEnded = false;
           setupVote();
+          console.log('Start vote');
         }
 
         if (voteBusy && !voteEnded && remainingDuration <= voteEnd) {
           voteBusy = false;
           voteEnded = true;
           endVote();
+          console.log('End vote');
         }
       },
       function (err) {
@@ -117,18 +130,19 @@ function setupPlaybackCheck() {
 }
 
 /**
- * Method to get two random items from the available tracks.
+ * Method to get a certain amount of random items from an array
  */
 function getRandomElementsFromArray(array, amount) {
   // Shuffle array
-  const shuffledTracks = array.sort(() => 0.5 - Math.random());
+  const shuffledArray = array.sort(() => 0.5 - Math.random());
   // Get sub-array of first n elements after shuffled
-  return shuffledTracks.slice(0, amount);
+  return shuffledArray.slice(0, amount);
 }
 
 /**
  * Method to setup the vote and emit to all connected sockets.
  */
+var options
 function setupVote() {
   options = getRandomElementsFromArray(availableTracks, 2);
   io.emit("new-vote", options);
@@ -138,14 +152,29 @@ function endVote() {
   // Emit end event
   io.emit("end-vote");
   // Determine winner
-  const winningTrack = determineWinningTrack();
+  const winningTrackId = determineWinningTrack();
+  console.log(`Winning track: ${winningTrackId}`);
   // Add winner to queue
-  addTrackToQueue(winningTrack);
+  addTrackToQueue(winningTrackId);
   // Clean up
   options = null;
   votes = [];
-  // TODO Remove track from available options
+  // Remove track from available options
+  remoteTrackFromAvailableOptions(winningTrackId);
+}
 
+function removeDisconnectedVote(socketId) {
+  const voteIndex = votes.findIndex(vote => vote.socketId == socketId);
+  if(voteIndex >= 0) {
+    votes.splice(voteIndex, 1);
+  }
+}
+
+function remoteTrackFromAvailableOptions(trackId) {
+  const trackIndex = availableTracks.findIndex(track => track.id === trackId);
+  if(trackIndex >= 0) {
+    availableTracks.splice(trackIndex, 1)
+  }
 }
 
 function determineWinningTrack() {
@@ -157,17 +186,17 @@ function determineWinningTrack() {
   ).length;
 
   if (option0VoteCount > option1VoteCount) {
-    console.log("Track", options[0].track.id, "won");
+    console.log(`Track  ${options[0].track.id} won with ${option0VoteCount} votes`);
     return options[0].track.id;
   }
 
-  if (option0VoteCount > option1VoteCount) {
-    console.log("Track", options[1].track.id, "won");
-    return options[0].track.id;
+  if (option0VoteCount < option1VoteCount) {
+    console.log(`Track  ${options[1].track.id} won with ${option1VoteCount} votes`);
+    return options[1].track.id;
   }
-  console.log("Tracks tied with ", option0VoteCount, " votes");
-
-  return getRandomElementsFromArray(options, 1);
+  console.log(`Tracks tried won with ${option0VoteCount} votes`);
+  // Always use the first item since the method returns an array.
+  return getRandomElementsFromArray(options, 1)[0].track.id;
 }
 
 function addTrackToQueue(trackId) {
