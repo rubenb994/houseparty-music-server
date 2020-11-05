@@ -1,6 +1,7 @@
 var app = require("express")();
 var http = require("http").createServer(app);
 var io = require("socket.io")(http);
+const axios = require("axios").default;
 const dotenv = require("dotenv");
 dotenv.config();
 var SpotifyWebApi = require("spotify-web-api-node");
@@ -136,7 +137,6 @@ function setupVote() {
 function endVote() {
   // Emit end event
   io.emit("end-vote");
-
   // Determine winner
   const winningTrack = determineWinningTrack();
   // Add winner to queue
@@ -144,6 +144,8 @@ function endVote() {
   // Clean up
   options = null;
   votes = [];
+  // TODO Remove track from available options
+
 }
 
 function determineWinningTrack() {
@@ -169,7 +171,23 @@ function determineWinningTrack() {
 }
 
 function addTrackToQueue(trackId) {
-  console.log("Add ", trackId, " to queue");
+  const config = {
+    headers: {
+      "Authorization": `Bearer ${spotifyApi.getAccessToken()}`,
+    },
+  };
+  axios
+    .post(
+      `https://api.spotify.com/v1/me/player/queue?uri=spotify:track:${trackId}`,
+      null,
+      config
+    )
+    .then(function () {
+      console.log("Successful added to queue");
+    })
+    .catch(function () {
+      console.log("Failed to add to queue");
+    });
 }
 
 http.listen(3000, () => {});
