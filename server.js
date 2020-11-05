@@ -4,10 +4,6 @@ var io = require("socket.io")(http);
 const dotenv = require("dotenv");
 dotenv.config();
 var SpotifyWebApi = require("spotify-web-api-node");
-
-const playlistId = "7K856YlxjAzxUIFuzRBsGa";
-var availableTracks;
-var usedTracks;
 const redirectUri = "http://localhost:3000/callback";
 const scopes = [
   "user-read-private",
@@ -25,18 +21,6 @@ const spotifyApi = new SpotifyWebApi({
   redirectUri: redirectUri,
 });
 
-function getSpotifyPlaylist() {
-  spotifyApi.getPlaylist(playlistId).then(
-    function (data) {
-      availableTracks = data.body.tracks.items;
-      playRandomSong();
-    },
-    function (err) {
-      console.log("Something went wrong!", err);
-    }
-  );
-}
-
 app.get("/login", (req, res) => {
   res.redirect(spotifyApi.createAuthorizeURL(scopes, state, true));
 });
@@ -53,6 +37,7 @@ app.get("/callback", function (req, res) {
       // Set the access token on the API object to use it in later calls
       spotifyApi.setAccessToken(data.body["access_token"]);
       spotifyApi.setRefreshToken(data.body["refresh_token"]);
+      getSpotifyPlaylist();
     },
     function (err) {
       console.log("Something went wrong during login", err);
@@ -60,55 +45,50 @@ app.get("/callback", function (req, res) {
   );
 });
 
-var firstPersonConnected = false;
-// Websockets stuff below
+var votes = [];
+var options = [];
 io.on("connection", (socket) => {
   console.log(`User ${socket.id} connected`);
 
-  socket.on("new-choice", (choice) => {
-    console.log(choice, " form ", socket.id);
+  socket.on("send-vote", (trackId) => {
+    console.log("New vote ", trackId, " form ", socket.id);
+    const foundIndex = votes.findIndex((vote) => vote.socketId === socket.id);
+    const newVote = { socketId: socket.id, trackId: trackId };
 
-    socket.broadcast.emit("new-choice", choice);
-  });
-
-  socket.on("setup-vote", () => {
-    setupPlaybackCheck();
-  });
-
-  socket.on("play", () => {
-    spotifyApi.play().then(
-      function () {
-        console.log("Playback started");
-      },
-      function (err) {
-        //if the user making the request is non-premium, a 403 FORBIDDEN response code will be returned
-        console.log("Something went wrong!", err);
-      }
-    );
-  });
-
-  socket.on("pause", () => {
-    spotifyApi.pause().then(
-      function () {
-        console.log("Playback paused");
-      },
-      function (err) {
-        //if the user making the request is non-premium, a 403 FORBIDDEN response code will be returned
-        console.log("Something went wrong!", err);
-      }
-    );
+    if (foundIndex >= 0) {
+      votes[foundIndex] = newVote;
+    } else {
+      votes.push(newVote);
+    }
+    console.log(votes);
   });
 });
 
+const playlistId = "7K856YlxjAzxUIFuzRBsGa";
+function getSpotifyPlaylist() {
+  spotifyApi.getPlaylist(playlistId).then(
+    function (data) {
+      availableTracks = data.body.tracks.items;
+      setupPlaybackCheck();
+    },
+    function (err) {
+      console.log("Something went wrong!", err);
+    }
+  );
+}
+
+const voteStart = 80000;
+const voteEnd = 20000;
 var voteBusy = false;
 var voteEnded = false;
-
+/**
+ * Setup playback check to trigger vote start and end
+ */
 function setupPlaybackCheck() {
+  console.log("SETUP PLAYBACK CHECK");
   setInterval(() => {
     spotifyApi.getMyCurrentPlaybackState().then(
       function (data) {
-        const voteStart = 40000;
-        const voteEnd = 20000;
         const remainingDuration =
           data.body.item.duration_ms - data.body.progress_ms;
 
@@ -135,12 +115,61 @@ function setupPlaybackCheck() {
   }, 1000);
 }
 
+/**
+ * Method to get two random items from the available tracks.
+ */
+function getRandomElementsFromArray(array, amount) {
+  // Shuffle array
+  const shuffledTracks = array.sort(() => 0.5 - Math.random());
+  // Get sub-array of first n elements after shuffled
+  return shuffledTracks.slice(0, amount);
+}
+
+/**
+ * Method to setup the vote and emit to all connected sockets.
+ */
 function setupVote() {
-  console.log("SETUP VOTE");
+  options = getRandomElementsFromArray(availableTracks, 2);
+  io.emit("new-vote", options);
 }
 
 function endVote() {
-  console.log("END VOTE");
+  // Emit end event
+  io.emit("end-vote");
+
+  // Determine winner
+  const winningTrack = determineWinningTrack();
+  // Add winner to queue
+  addTrackToQueue(winningTrack);
+  // Clean up
+  options = null;
+  votes = [];
+}
+
+function determineWinningTrack() {
+  const option0VoteCount = votes.filter(
+    (vote) => vote.trackId === options[0].track.id
+  ).length;
+  const option1VoteCount = votes.filter(
+    (vote) => vote.trackId === options[1].track.id
+  ).length;
+
+  if (option0VoteCount > option1VoteCount) {
+    console.log("Track", options[0].track.id, "won");
+    return options[0].track.id;
+  }
+
+  if (option0VoteCount > option1VoteCount) {
+    console.log("Track", options[1].track.id, "won");
+    return options[0].track.id;
+  }
+  console.log("Tracks tied with ", option0VoteCount, " votes");
+
+  return getRandomElementsFromArray(options, 1);
+}
+
+function addTrackToQueue(trackId) {
+  console.log("Add ", trackId, " to queue");
 }
 
 http.listen(3000, () => {});
