@@ -54,10 +54,6 @@ io.on("connection", (socket) => {
   if (voteBusy) {
     io.emit("new-vote", options);
     io.emit("votes-updated", votes);
-  } else {
-    if (winningTrackId) {
-      io.emit("end-vote", winningTrackId);
-    }
   }
 
   socket.on("send-vote", (trackId) => {
