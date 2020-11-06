@@ -100,7 +100,11 @@ function setupPlaybackCheck() {
   setInterval(() => {
     spotifyApi.getMyCurrentPlaybackState().then(
       function (data) {
-        if (data.body == null || data.body.item == null || data.body.progress_ms == null) {
+        if (
+          data.body == null ||
+          data.body.item == null ||
+          data.body.progress_ms == null
+        ) {
           console.log(
             "No playback data unavailable cannot start playback check"
           );
@@ -211,7 +215,8 @@ function determineWinningTrack() {
 function addTrackToQueue(trackId) {
   const config = {
     headers: {
-    // eslint-disable-next-lin
+      // eslint-disable-next-line
+      // prettier-ignore
       "Authorization": `Bearer ${spotifyApi.getAccessToken()}`,
     },
   };
