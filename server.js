@@ -53,6 +53,11 @@ io.on("connection", (socket) => {
 
   if (voteBusy) {
     io.emit("new-vote", options);
+    io.emit("votes-updated", votes);
+  } else {
+    if (winningTrackId) {
+      io.emit("end-vote", winningTrackId);
+    }
   }
 
   socket.on("send-vote", (trackId) => {
@@ -65,7 +70,8 @@ io.on("connection", (socket) => {
     } else {
       votes.push(newVote);
     }
-    console.log(votes);
+
+    io.emit("votes-updated", votes);
   });
 
   socket.on("disconnect", () => {
@@ -88,7 +94,7 @@ function getSpotifyPlaylist() {
   );
 }
 
-const voteStart = 8000000;
+const voteStart = 50000;
 const voteEnd = 20000;
 var voteBusy = false;
 var voteEnded = false;
@@ -157,21 +163,29 @@ function setupVote() {
   io.emit("new-vote", options);
 }
 
+/**
+ * Method to end a vote.
+ */
+var winningTrackId;
 function endVote() {
-  // Emit end event
-  io.emit("end-vote");
   // Determine winner
-  const winningTrackId = determineWinningTrack();
+  winningTrackId = determineWinningTrack();
   console.log(`Winning track: ${winningTrackId}`);
   // Add winner to queue
   addTrackToQueue(winningTrackId);
+  // Emit end event
+  io.emit("end-vote", winningTrackId);
   // Clean up
-  options = null;
+  options = [];
   votes = [];
   // Remove track from available options
-  remoteTrackFromAvailableOptions(winningTrackId);
+  removeTrackFromAvailableOptions(winningTrackId);
+  console.log("Available tracks length ", availableTracks.length);
 }
 
+/**
+ * Method to remove votes when a socket disconnects
+ */
 function removeDisconnectedVote(socketId) {
   const voteIndex = votes.findIndex((vote) => vote.socketId == socketId);
   if (voteIndex >= 0) {
@@ -179,13 +193,21 @@ function removeDisconnectedVote(socketId) {
   }
 }
 
-function remoteTrackFromAvailableOptions(trackId) {
-  const trackIndex = availableTracks.findIndex((track) => track.id === trackId);
+/**
+ * Method to remove track from available options.
+ */
+function removeTrackFromAvailableOptions(trackId) {
+  const trackIndex = availableTracks.findIndex(
+    (track) => track.track.id == trackId
+  );
   if (trackIndex >= 0) {
     availableTracks.splice(trackIndex, 1);
   }
 }
 
+/**
+ * Method to determine the winning track.
+ */
 function determineWinningTrack() {
   const option0VoteCount = votes.filter(
     (vote) => vote.trackId === options[0].track.id
@@ -227,7 +249,7 @@ function addTrackToQueue(trackId) {
       config
     )
     .then(function () {
-      console.log("Successful added to queue");
+      // console.log("Successful added to queue");
     })
     .catch(function () {
       console.log("Failed to add to queue");
