@@ -5,7 +5,6 @@ const axios = require("axios").default;
 const dotenv = require("dotenv");
 dotenv.config();
 var SpotifyWebApi = require("spotify-web-api-node");
-const { isRegExp } = require("util");
 const redirectUri = "http://localhost:3000/callback";
 const scopes = [
   "user-read-private",
@@ -52,7 +51,7 @@ var options = [];
 io.on("connection", (socket) => {
   console.log(`Socket ${socket.id} connected`);
 
-  if(voteBusy) {
+  if (voteBusy) {
     io.emit("new-vote", options);
   }
 
@@ -69,7 +68,7 @@ io.on("connection", (socket) => {
     console.log(votes);
   });
 
-  socket.on('disconnect', () => {
+  socket.on("disconnect", () => {
     console.log(`Socket ${socket.id} disconnected`);
     removeDisconnectedVote(socket.id);
     console.log(votes);
@@ -89,7 +88,7 @@ function getSpotifyPlaylist() {
   );
 }
 
-const voteStart = 80000;
+const voteStart = 8000000;
 const voteEnd = 20000;
 var voteBusy = false;
 var voteEnded = false;
@@ -101,6 +100,12 @@ function setupPlaybackCheck() {
   setInterval(() => {
     spotifyApi.getMyCurrentPlaybackState().then(
       function (data) {
+        if (data.body == null || data.body.item == null || data.body.progress_ms == null) {
+          console.log(
+            "No playback data unavailable cannot start playback check"
+          );
+          return;
+        }
         const remainingDuration =
           data.body.item.duration_ms - data.body.progress_ms;
 
@@ -112,18 +117,18 @@ function setupPlaybackCheck() {
           voteBusy = true;
           voteEnded = false;
           setupVote();
-          console.log('Start vote');
+          console.log("Start vote");
         }
 
         if (voteBusy && !voteEnded && remainingDuration <= voteEnd) {
           voteBusy = false;
           voteEnded = true;
           endVote();
-          console.log('End vote');
+          console.log("End vote");
         }
       },
       function (err) {
-        console.log("Something went wrong fetching playback info ", err);
+        spotifyApi.refreshAccessToken();
       }
     );
   }, 1000);
@@ -142,7 +147,7 @@ function getRandomElementsFromArray(array, amount) {
 /**
  * Method to setup the vote and emit to all connected sockets.
  */
-var options
+var options;
 function setupVote() {
   options = getRandomElementsFromArray(availableTracks, 2);
   io.emit("new-vote", options);
@@ -164,16 +169,16 @@ function endVote() {
 }
 
 function removeDisconnectedVote(socketId) {
-  const voteIndex = votes.findIndex(vote => vote.socketId == socketId);
-  if(voteIndex >= 0) {
+  const voteIndex = votes.findIndex((vote) => vote.socketId == socketId);
+  if (voteIndex >= 0) {
     votes.splice(voteIndex, 1);
   }
 }
 
 function remoteTrackFromAvailableOptions(trackId) {
-  const trackIndex = availableTracks.findIndex(track => track.id === trackId);
-  if(trackIndex >= 0) {
-    availableTracks.splice(trackIndex, 1)
+  const trackIndex = availableTracks.findIndex((track) => track.id === trackId);
+  if (trackIndex >= 0) {
+    availableTracks.splice(trackIndex, 1);
   }
 }
 
@@ -186,15 +191,19 @@ function determineWinningTrack() {
   ).length;
 
   if (option0VoteCount > option1VoteCount) {
-    console.log(`Track  ${options[0].track.id} won with ${option0VoteCount} votes`);
+    console.log(
+      `Track  ${options[0].track.id} won with ${option0VoteCount} votes`
+    );
     return options[0].track.id;
   }
 
   if (option0VoteCount < option1VoteCount) {
-    console.log(`Track  ${options[1].track.id} won with ${option1VoteCount} votes`);
+    console.log(
+      `Track  ${options[1].track.id} won with ${option1VoteCount} votes`
+    );
     return options[1].track.id;
   }
-  console.log(`Tracks tried won with ${option0VoteCount} votes`);
+  console.log(`Tracks tied with ${option0VoteCount} votes`);
   // Always use the first item since the method returns an array.
   return getRandomElementsFromArray(options, 1)[0].track.id;
 }
@@ -202,6 +211,7 @@ function determineWinningTrack() {
 function addTrackToQueue(trackId) {
   const config = {
     headers: {
+    // eslint-disable-next-lin
       "Authorization": `Bearer ${spotifyApi.getAccessToken()}`,
     },
   };
